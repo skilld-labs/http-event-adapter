@@ -2,11 +2,11 @@ package adapter
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"path/filepath"
 	"plugin"
-	"reflect"
 	gotemplate "text/template"
 
 	"github.com/skilld-labs/http-event-adapter/log"
@@ -16,6 +16,10 @@ import (
 	"github.com/skilld-labs/http-event-adapter/format"
 	"github.com/skilld-labs/http-event-adapter/template"
 	"github.com/skilld-labs/http-event-adapter/writer"
+)
+
+var (
+	errInputInvalid = errors.New("input is invalid")
 )
 
 type AdapterConfiguration struct {
@@ -37,6 +41,7 @@ type EventConfiguration struct {
 	OutputTemplate    string              `config:"outputTemplate"`
 	OutputWriter      string              `config:"outputWriter"`
 	OutputChannel     string              `config:"outputChannel"`
+	SingleInputEvent  bool                `config:"singleInputEvent"`
 	SingleOutputEvent bool                `config:"singleOutputEvent"`
 	ChrootPath        string              `config:"chrootPath"`
 	ExtendedFunctions map[string][]string `config:"extendedFunctions"`
@@ -51,7 +56,7 @@ func NewAdapter(cfg *AdapterConfiguration) (*Adapter, error) {
 	}, nil
 }
 
-func (a *Adapter) AdaptEvent(eventCfg *EventConfiguration) (func([]byte), error) {
+func (a *Adapter) AdaptEvent(eventCfg *EventConfiguration) (func([]byte) error, error) {
 	writer, err := a.writerByName(eventCfg.OutputWriter)
 	if err != nil {
 		return nil, err
@@ -65,16 +70,17 @@ func (a *Adapter) AdaptEvent(eventCfg *EventConfiguration) (func([]byte), error)
 		return nil, err
 	}
 	channelTmpl, err := a.getChannelTemplate(eventCfg)
-	return func(event []byte) {
+	return func(event []byte) error {
 		oo, err := a.outputsFromEvent(event, eventCfg, formatter, tmpl, channelTmpl)
 		if err != nil {
-			a.logger.Err(err.Error())
+			return err
 		}
 		for _, o := range oo {
 			if err = writer.Write(o.channel, o.body); err != nil {
 				a.logger.Err(err.Error())
 			}
 		}
+		return nil
 	}, nil
 }
 
@@ -84,11 +90,23 @@ type output struct {
 }
 
 func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, formatter format.Formatter, tmpl *gotemplate.Template, channelTmpl *gotemplate.Template) ([]*output, error) {
-	var ee []*output
-	elem, err := formatter.Format(event)
-	if err != nil {
-		return nil, err
+	var err error
+	var elem interface{}
+	if eventCfg.SingleInputEvent {
+		elem, err = formatter.FormatSingle(event)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		elem, err = formatter.FormatMultiple(event)
+		if err != nil {
+			return nil, err
+		}
+		if len(elem.([]interface{})) == 0 {
+			return nil, errInputInvalid
+		}
 	}
+	var ee []*output
 	if eventCfg.SingleOutputEvent {
 		ev, err := a.executeTemplate(tmpl, elem)
 		if err != nil {
@@ -100,15 +118,14 @@ func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, f
 		}
 		ee = append(ee, &output{channel: string(channel), body: ev})
 	} else {
-		re := reflect.ValueOf(elem)
-		if re.Kind() == reflect.Slice {
-			for i := 0; i < re.Len(); i++ {
-				data := re.Index(i).Interface()
-				ev, err := a.executeTemplate(tmpl, data)
+		if !eventCfg.SingleInputEvent {
+			elems := elem.([]interface{})
+			for i := 0; i < len(elems); i++ {
+				ev, err := a.executeTemplate(tmpl, elems[i])
 				if err != nil {
 					return nil, err
 				}
-				channel, err := a.executeTemplate(channelTmpl, data)
+				channel, err := a.executeTemplate(channelTmpl, elems[i])
 				if err != nil {
 					return nil, err
 				}

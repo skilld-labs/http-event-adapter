@@ -3,6 +3,7 @@ package format
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"io"
 )
 
@@ -22,9 +23,21 @@ func NewCsvFormatter(cfg *FormatterConfiguration) (Formatter, error) {
 	return &csvFormatter{separator: separator}, nil
 }
 
-func (c *csvFormatter) Format(data []byte) (interface{}, error) {
+func (c *csvFormatter) FormatSingle(data []byte) (map[string]interface{}, error) {
+	return nil, errors.New("cannot parse single input")
+}
+
+func (c *csvFormatter) FormatMultiple(data []byte) ([]interface{}, error) {
 	r := bytes.NewReader(data)
-	return c.csvToMaps(r)
+	mm, err := c.csvToMaps(r)
+	if err != nil {
+		return nil, err
+	}
+	var d []interface{}
+	for _, m := range mm {
+		d = append(d, m)
+	}
+	return d, err
 }
 
 func (c *csvFormatter) csvToMaps(reader io.Reader) ([]map[string]string, error) {

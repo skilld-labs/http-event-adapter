@@ -14,14 +14,14 @@ type RouterConfiguration struct {
 
 type Router struct {
 	logger log.Logger
-	routes map[string]func([]byte)
+	routes map[string]func([]byte) error
 }
 
 func NewRouter(cfg *RouterConfiguration) *Router {
-	return &Router{logger: cfg.Logger, routes: make(map[string]func([]byte))}
+	return &Router{logger: cfg.Logger, routes: make(map[string]func([]byte) error)}
 }
 
-func (r *Router) AddRoute(path string, callback func([]byte)) error {
+func (r *Router) AddRoute(path string, callback func([]byte) error) error {
 	if _, exists := r.routes[path]; exists {
 		return fmt.Errorf("a route have been already registered on route %s", path)
 	}
@@ -38,10 +38,14 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if callback, exists := r.routes[req.URL.Path]; exists {
-		fmt.Fprint(w, "ok")
 		body := new(bytes.Buffer)
 		body.ReadFrom(req.Body)
-		callback(body.Bytes())
+		if err := callback(body.Bytes()); err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest)+" : "+err.Error(), http.StatusBadRequest)
+			r.logger.Err("error while running callback function of %s path (err : %s)", req.URL.Path, err.Error())
+			return
+		}
+		fmt.Fprint(w, http.StatusText(http.StatusOK))
 	} else {
 		r.logger.Err("no route on path %s", req.URL.Path)
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)

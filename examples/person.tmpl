@@ -1,9 +1,0 @@
-{
-	"date": "{{ Now }}",
-	"id": "person.{{ UnixNow }}",
-	"body": "[{\"username\": \"{{ Username .firstname .lastname }}\"}]",
-	"labels": [],
-	"properties": {"operation": "update"},
-	"channel": "/person.{{ Username .firstname .lastname }}",
-	"origin": "http-event-adapter",
-}

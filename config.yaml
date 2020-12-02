@@ -1,28 +1,8 @@
 log:
   verbosity: debug
 port: "8081"
-events:
-  /json: # the server route
-    inputFormat: json
-    outputTemplate: examples/person.tmpl
-    outputWriter: fmt
-    outputChannel: /person.{{ Username .firstname .lastname }}
-    extendedFunctions:
-      examples/extensions/username/username.so:
-        - Username
-  /csv:
-    inputFormat: csv
-    outputTemplate: examples/person.tmpl
-    outputWriter: fmt
-    outputChannel: /person.{{ Username .firstname .lastname }}
-    extendedFunctions:
-      examples/extensions/username/username.so:
-        - Username
-  /yaml:
-    inputFormat: yaml
-    outputTemplate: examples/person.tmpl
-    outputWriter: fmt
-    outputChannel: /person.{{ Username .firstname .lastname }}
-    extendedFunctions:
-      examples/extensions/username/username.so:
-        - Username
+events: []
+nats:
+  url: localhost:4222
+csv:
+  separator: ;

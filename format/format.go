@@ -13,7 +13,8 @@ type FormatterConfiguration struct {
 }
 
 type Formatter interface {
-	Format([]byte) (interface{}, error)
+	FormatSingle([]byte) (map[string]interface{}, error)
+	FormatMultiple([]byte) ([]interface{}, error)
 }
 
 func GetFormatter(cfg *FormatterConfiguration, name string) (Formatter, error) {
