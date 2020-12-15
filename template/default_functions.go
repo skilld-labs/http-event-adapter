@@ -1,6 +1,7 @@
 package template
 
 import (
+	"strconv"
 	"strings"
 	gotemplate "text/template"
 	"time"
@@ -8,16 +9,18 @@ import (
 
 func GetDefaultFuncs() gotemplate.FuncMap {
 	return map[string]interface{}{
-		"Now":         Now,
-		"NowUnix":     NowUnix,
-		"NowUnixNano": NowUnixNano,
-		"ToLower":     ToLower,
-		"Replace":     Replace,
-		"Split":       Split,
+		"Now":            Now,
+		"NowUnix":        NowUnix,
+		"NowUnixNano":    NowUnixNano,
+		"ToLower":        ToLower,
+		"Replace":        Replace,
+		"Split":          Split,
+		"ParseFloat":     ParseFloat,
+		"MustParseFloat": MustParseFloat,
 	}
 }
 
-func Now(vv ...interface{}) (interface{}, error) {
+func Now(vv ...interface{}) string {
 	format := time.RFC3339
 	if len(vv) > 0 {
 		fmt, isString := vv[0].(string)
@@ -25,62 +28,34 @@ func Now(vv ...interface{}) (interface{}, error) {
 			format = fmt
 		}
 	}
-	return time.Now().Format(format), nil
+	return time.Now().Format(format)
 }
 
-func NowUnix(vv ...interface{}) (interface{}, error) {
-	return time.Now().Unix(), nil
+func NowUnix() int64 {
+	return time.Now().Unix()
 }
 
-func NowUnixNano(vv ...interface{}) (interface{}, error) {
-	return time.Now().UnixNano(), nil
+func NowUnixNano() int64 {
+	return time.Now().UnixNano()
 }
 
-func ToLower(vv ...interface{}) (interface{}, error) {
-	if len(vv) > 0 {
-		value, isString := vv[0].(string)
-		if !isString {
-			return "", nil
-		}
-		return strings.ToLower(value), nil
-	}
-	return "", nil
+func ToLower(str string) string {
+	return strings.ToLower(str)
 }
 
-func Replace(vv ...interface{}) (interface{}, error) {
-	if len(vv) == 4 {
-		s, isString := vv[0].(string)
-		if !isString {
-			return "", nil
-		}
-		old, isString := vv[1].(string)
-		if !isString {
-			return "", nil
-		}
-		new, isString := vv[2].(string)
-		if !isString {
-			return "", nil
-		}
-		n, isInt := vv[3].(int)
-		if !isInt {
-			return "", nil
-		}
-		return strings.Replace(s, old, new, n), nil
-	}
-	return "", nil
+func Replace(s, old, new string, n int) string {
+	return strings.Replace(s, old, new, n)
 }
 
-func Split(vv ...interface{}) (interface{}, error) {
-	if len(vv) == 2 {
-		s, isString := vv[0].(string)
-		if !isString {
-			return []string{}, nil
-		}
-		sep, isString := vv[1].(string)
-		if !isString {
-			return []string{}, nil
-		}
-		return strings.Split(s, sep), nil
-	}
-	return []string{}, nil
+func Split(s, sep string) []string {
+	return strings.Split(s, sep)
+}
+
+func ParseFloat(s string, bitSize int) float64 {
+	f, _ := strconv.ParseFloat(s, bitSize)
+	return f
+}
+
+func MustParseFloat(s string, bitSize int) (float64, error) {
+	return strconv.ParseFloat(s, bitSize)
 }
