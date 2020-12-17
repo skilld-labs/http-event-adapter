@@ -40,14 +40,15 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if callback, exists := r.routes[req.URL.Path]; exists {
 		body := new(bytes.Buffer)
 		body.ReadFrom(req.Body)
-		if err := callback(body.Bytes()); err != nil {
-			http.Error(w, http.StatusText(http.StatusBadRequest)+" : "+err.Error(), http.StatusBadRequest)
-			r.logger.Err("error while running callback function of %s path (err : %s)", req.URL.Path, err.Error())
-			return
-		}
-		fmt.Fprint(w, http.StatusText(http.StatusOK))
+		go func() {
+			if err := callback(body.Bytes()); err != nil {
+				http.Error(w, http.StatusText(http.StatusBadRequest)+" : "+err.Error(), http.StatusBadRequest)
+				r.logger.Err("error while running callback function of %s path (err : %s)", req.URL.Path, err.Error())
+			}
+		}()
 	} else {
 		r.logger.Err("no route on path %s", req.URL.Path)
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 	}
+	fmt.Fprint(w, http.StatusText(http.StatusAccepted))
 }

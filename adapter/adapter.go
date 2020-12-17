@@ -9,6 +9,8 @@ import (
 	"plugin"
 	gotemplate "text/template"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/skilld-labs/http-event-adapter/log"
 
 	"github.com/skilld-labs/http-event-adapter/configuration"
@@ -71,11 +73,9 @@ func (a *Adapter) AdaptEvent(eventCfg *EventConfiguration) (func([]byte) error, 
 	}
 	channelTmpl, err := a.getChannelTemplate(eventCfg)
 	return func(event []byte) error {
-		oo, err := a.outputsFromEvent(event, eventCfg, formatter, tmpl, channelTmpl)
-		if err != nil {
-			return err
-		}
-		for _, o := range oo {
+		outputs := make(chan (output))
+		go a.outputsFromEvent(event, eventCfg, formatter, tmpl, channelTmpl, outputs)
+		for o := range outputs {
 			if err = writer.Write(o.channel, o.body); err != nil {
 				a.logger.Err(err.Error())
 			}
@@ -89,55 +89,67 @@ type output struct {
 	body    []byte
 }
 
-func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, formatter format.Formatter, tmpl *gotemplate.Template, channelTmpl *gotemplate.Template) ([]*output, error) {
+func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, formatter format.Formatter, tmpl *gotemplate.Template, channelTmpl *gotemplate.Template, outputs chan (output)) error {
+	g := errgroup.Group{}
 	var err error
 	var elem interface{}
 	if eventCfg.SingleInputEvent {
 		elem, err = formatter.FormatSingle(event)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	} else {
 		elem, err = formatter.FormatMultiple(event)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if len(elem.([]interface{})) == 0 {
-			return nil, errInputInvalid
+			return errInputInvalid
 		}
 	}
-	var ee []*output
 	if eventCfg.SingleOutputEvent {
-		ev, err := a.executeTemplate(tmpl, elem)
-		if err != nil {
-			return nil, err
-		}
-		channel, err := a.executeTemplate(channelTmpl, elem)
-		if err != nil {
-			return nil, err
-		}
-		ee = append(ee, &output{channel: string(channel), body: ev})
+		g.Go(func() error {
+			ev, err := a.executeTemplate(tmpl, elem)
+			if err != nil {
+				return err
+			}
+			channel, err := a.executeTemplate(channelTmpl, elem)
+			if err != nil {
+				return err
+			}
+			outputs <- output{channel: string(channel), body: ev}
+			return nil
+		})
 	} else {
 		if !eventCfg.SingleInputEvent {
 			elems := elem.([]interface{})
 			for i := 0; i < len(elems); i++ {
-				ev, err := a.executeTemplate(tmpl, elems[i])
-				if err != nil {
-					return nil, err
-				}
-				channel, err := a.executeTemplate(channelTmpl, elems[i])
-				if err != nil {
-					return nil, err
-				}
-				ee = append(ee, &output{channel: string(channel), body: ev})
+				i := i
+				g.Go(func() error {
+					i = i
+					ev, err := a.executeTemplate(tmpl, elems[i])
+					if err != nil {
+						return err
+					}
+					channel, err := a.executeTemplate(channelTmpl, elems[i])
+					if err != nil {
+						return err
+					}
+					outputs <- output{channel: string(channel), body: ev}
+					return nil
+				})
 			}
 		} else if eventCfg.ChrootPath != "" {
-			return nil, fmt.Errorf("%v: output type invalid: cannot have multiple output type for a single input type if chrootPath is empty", eventCfg)
+			return fmt.Errorf("%v: output type invalid: cannot have multiple output type for a single input type if chrootPath is empty", eventCfg)
 		} else {
 			// implement possibility to chroot and iterate through this chrooted key
 		}
 	}
-	return ee, nil
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	close(outputs)
+	return nil
 }
 
 func (a *Adapter) getOutputTemplate(eventCfg *EventConfiguration) (*gotemplate.Template, error) {
