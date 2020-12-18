@@ -12,6 +12,7 @@ func GetDefaultFuncs() gotemplate.FuncMap {
 		"Now":            Now,
 		"NowUnix":        NowUnix,
 		"NowUnixNano":    NowUnixNano,
+		"TimeFormat":     TimeFormat,
 		"ToLower":        ToLower,
 		"Replace":        Replace,
 		"Split":          Split,
@@ -37,6 +38,14 @@ func NowUnix() int64 {
 
 func NowUnixNano() int64 {
 	return time.Now().UnixNano()
+}
+
+func TimeFormat(in, inLayout, outLayout string) (string, error) {
+	t, err := time.Parse(in, inLayout)
+	if err != nil {
+		return "", err
+	}
+	return t.Format(outLayout), nil
 }
 
 func ToLower(str string) string {
