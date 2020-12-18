@@ -89,22 +89,28 @@ type output struct {
 	body    []byte
 }
 
-func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, formatter format.Formatter, tmpl *gotemplate.Template, channelTmpl *gotemplate.Template, outputs chan (output)) error {
+func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, formatter format.Formatter, tmpl *gotemplate.Template, channelTmpl *gotemplate.Template, outputs chan (output)) {
 	g := errgroup.Group{}
 	var err error
 	var elem interface{}
 	if eventCfg.SingleInputEvent {
 		elem, err = formatter.FormatSingle(event)
 		if err != nil {
-			return err
+			a.logger.Err(err.Error())
+			close(outputs)
+			return
 		}
 	} else {
 		elem, err = formatter.FormatMultiple(event)
 		if err != nil {
-			return err
+			a.logger.Err(err.Error())
+			close(outputs)
+			return
 		}
 		if len(elem.([]interface{})) == 0 {
-			return errInputInvalid
+			a.logger.Err("input is invalid")
+			close(outputs)
+			return
 		}
 	}
 	if eventCfg.SingleOutputEvent {
@@ -115,6 +121,7 @@ func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, f
 			}
 			channel, err := a.executeTemplate(channelTmpl, elem)
 			if err != nil {
+				a.logger.Err(err.Error())
 				return err
 			}
 			outputs <- output{channel: string(channel), body: ev}
@@ -140,16 +147,18 @@ func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, f
 				})
 			}
 		} else if eventCfg.ChrootPath != "" {
-			return fmt.Errorf("%v: output type invalid: cannot have multiple output type for a single input type if chrootPath is empty", eventCfg)
+			a.logger.Err("%v: output type invalid: cannot have multiple output type for a single input type if chrootPath is empty", eventCfg)
+			close(outputs)
+			return
 		} else {
 			// implement possibility to chroot and iterate through this chrooted key
 		}
 	}
 	if err := g.Wait(); err != nil {
-		return err
+		a.logger.Err(err.Error())
+		close(outputs)
+		return
 	}
-	close(outputs)
-	return nil
 }
 
 func (a *Adapter) getOutputTemplate(eventCfg *EventConfiguration) (*gotemplate.Template, error) {
