@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	"path/filepath"
 	"plugin"
@@ -18,6 +19,10 @@ import (
 	"github.com/skilld-labs/http-event-adapter/format"
 	"github.com/skilld-labs/http-event-adapter/template"
 	"github.com/skilld-labs/http-event-adapter/writer"
+)
+
+const (
+	defaultBatchInterval = time.Second
 )
 
 var (
@@ -47,6 +52,9 @@ type EventConfiguration struct {
 	SingleOutputEvent bool                `config:"singleOutputEvent"`
 	ChrootPath        string              `config:"chrootPath"`
 	ExtendedFunctions map[string][]string `config:"extendedFunctions"`
+	BatchSize         int64               `config:"batchSize"`
+	BatchInterval     string              `config:"batchInterval"`
+	batchInterval     time.Duration
 }
 
 func NewAdapter(cfg *AdapterConfiguration) (*Adapter, error) {
@@ -72,6 +80,16 @@ func (a *Adapter) AdaptEvent(eventCfg *EventConfiguration) (func([]byte) error, 
 		return nil, err
 	}
 	channelTmpl, err := a.getChannelTemplate(eventCfg)
+	batchInterval := defaultBatchInterval
+	if eventCfg.BatchSize > 0 {
+		if d, err := time.ParseDuration(eventCfg.BatchInterval); err == nil {
+			batchInterval = d
+		} else {
+			a.logger.Err("error while parsing batch interval (%s) using default batch interval instead (%s)", err.Error(), defaultBatchInterval.String())
+		}
+		eventCfg.batchInterval = batchInterval
+		a.logger.Debug("batch is enable (output channel %s), batch size: %d, batch interval: %s", eventCfg.OutputChannel, eventCfg.BatchSize, eventCfg.batchInterval.String())
+	}
 	return func(event []byte) error {
 		outputs := make(chan (output))
 		go a.outputsFromEvent(event, eventCfg, formatter, tmpl, channelTmpl, outputs)
@@ -130,7 +148,14 @@ func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, f
 	} else {
 		if !eventCfg.SingleInputEvent {
 			elems := elem.([]interface{})
+			var elemsPerBatch int64
 			for i := 0; i < len(elems); i++ {
+				if eventCfg.BatchSize > 0 {
+					if eventCfg.BatchSize == elemsPerBatch {
+						elemsPerBatch = 0
+						time.Sleep(eventCfg.batchInterval)
+					}
+				}
 				i := i
 				g.Go(func() error {
 					i = i
@@ -145,6 +170,9 @@ func (a *Adapter) outputsFromEvent(event []byte, eventCfg *EventConfiguration, f
 					outputs <- output{channel: string(channel), body: ev}
 					return nil
 				})
+				if eventCfg.BatchSize > 0 {
+					elemsPerBatch += 1
+				}
 			}
 		} else if eventCfg.ChrootPath != "" {
 			a.logger.Err("%v: output type invalid: cannot have multiple output type for a single input type if chrootPath is empty", eventCfg)
