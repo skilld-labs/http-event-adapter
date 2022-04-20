@@ -40,7 +40,15 @@ func NowUnixNano() int64 {
 	return time.Now().UnixNano()
 }
 
-func TimeFormat(inLayout, outLayout, in string) (string, error) {
+func TimeFormat(inLayout, outLayout, in string) string {
+	t, err := time.Parse(inLayout, in)
+	if err != nil {
+		t = time.Unix(0, 0)
+	}
+	return t.Format(outLayout)
+}
+
+func MustTimeFormat(inLayout, outLayout, in string) (string, error) {
 	t, err := time.Parse(inLayout, in)
 	if err != nil {
 		return "", err
