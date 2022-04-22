@@ -43,7 +43,7 @@ func NowUnixNano() int64 {
 	return time.Now().UnixNano()
 }
 
-func TimeChangeTimeZone(t time.Time, timeZone string) (time.Time, error) {
+func TimeChangeTimeZone(timeZone string, t time.Time) (time.Time, error) {
 	tz, err := time.LoadLocation(timeZone)
 	if err != nil {
 		return t, err
@@ -51,15 +51,15 @@ func TimeChangeTimeZone(t time.Time, timeZone string) (time.Time, error) {
 	return t.In(tz), nil
 }
 
-func TimeParse(layout, value, timeZone string) time.Time {
-	t, err := MustTimeParse(layout, value, timeZone)
+func TimeParse(layout, timeZone, value string) time.Time {
+	t, err := MustTimeParse(layout, timeZone, value)
 	if err != nil {
 		t = time.Unix(0, 0)
 	}
 	return t
 }
 
-func MustTimeParse(layout, value, timeZone string) (time.Time, error) {
+func MustTimeParse(layout, timeZone, value string) (time.Time, error) {
 	tz, err := time.LoadLocation(timeZone)
 	if err != nil {
 		return time.Time{}, err
