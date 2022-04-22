@@ -9,15 +9,18 @@ import (
 
 func GetDefaultFuncs() gotemplate.FuncMap {
 	return map[string]interface{}{
-		"Now":            Now,
-		"NowUnix":        NowUnix,
-		"NowUnixNano":    NowUnixNano,
-		"TimeFormat":     TimeFormat,
-		"ToLower":        ToLower,
-		"Replace":        Replace,
-		"Split":          Split,
-		"ParseFloat":     ParseFloat,
-		"MustParseFloat": MustParseFloat,
+		"Now":                Now,
+		"NowUnix":            NowUnix,
+		"NowUnixNano":        NowUnixNano,
+		"TimeFormat":         TimeFormat,
+		"TimeChangeTimeZone": TimeChangeTimeZone,
+		"TimeParse":          TimeParse,
+		"MustTimeParse":      MustTimeParse,
+		"ToLower":            ToLower,
+		"Replace":            Replace,
+		"Split":              Split,
+		"ParseFloat":         ParseFloat,
+		"MustParseFloat":     MustParseFloat,
 	}
 }
 
@@ -40,20 +43,32 @@ func NowUnixNano() int64 {
 	return time.Now().UnixNano()
 }
 
-func TimeFormat(inLayout, outLayout, in string) string {
-	t, err := time.Parse(inLayout, in)
+func TimeChangeTimeZone(t time.Time, timeZone string) (time.Time, error) {
+	tz, err := time.LoadLocation(timeZone)
+	if err != nil {
+		return t, err
+	}
+	return t.In(tz), nil
+}
+
+func TimeParse(layout, value, timeZone string) time.Time {
+	t, err := MustTimeParse(layout, value, timeZone)
 	if err != nil {
 		t = time.Unix(0, 0)
 	}
-	return t.Format(outLayout)
+	return t
 }
 
-func MustTimeFormat(inLayout, outLayout, in string) (string, error) {
-	t, err := time.Parse(inLayout, in)
+func MustTimeParse(layout, value, timeZone string) (time.Time, error) {
+	tz, err := time.LoadLocation(timeZone)
 	if err != nil {
-		return "", err
+		return time.Time{}, err
 	}
-	return t.Format(outLayout), nil
+	return time.ParseInLocation(layout, value, tz)
+}
+
+func TimeFormat(layout string, t time.Time) string {
+	return t.Format(layout)
 }
 
 func ToLower(str string) string {
