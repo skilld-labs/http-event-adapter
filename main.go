@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/skilld-labs/http-event-adapter/configuration"
 	"github.com/skilld-labs/http-event-adapter/log"
@@ -15,6 +20,8 @@ import (
 
 func main() {
 	config := flag.String("config", "config.yaml", "The path for the config file")
+	debug := flag.Bool("debug", false, "if activated it will register requests body in the directory mentionned with debugDirectory flag")
+	debugDirectory := flag.String("debugDirectory", "/tmp/requests", "all the requests files will be registered in this directory, if debug flag is activated")
 	flag.Parse()
 
 	l := log.NewJsonLogger(&log.LoggerConfiguration{})
@@ -57,8 +64,44 @@ func main() {
 		r.AddRoute(path, c)
 	}
 
-	http.Handle("/", r)
+	http.Handle("/", debugMiddleware(*debug, *debugDirectory, r))
+
 	port := cfg.GetString("port")
 	l.Info("server listening on %s", port)
 	l.Fatal(http.ListenAndServe(":"+port, nil).Error())
+}
+func debugMiddleware(debug bool, debugDirectory string, handler http.Handler) http.Handler {
+	if !debug {
+		return handler
+	}
+	// Create a directory if it doesn't exist
+	if _, err := os.Stat(debugDirectory); os.IsNotExist(err) {
+		os.MkdirAll(debugDirectory, 0755) // Adjust the permissions as needed
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// Read the body data
+		body, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			http.Error(w, "Error reading request body", http.StatusInternalServerError)
+			return
+		}
+
+		// Restore the body so it can be read by the original handler
+		req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+
+		// Generate a filename based on the current time to avoid overwrites
+		timestamp := time.Now().Format("20060102150405")
+		fileName := filepath.Join(debugDirectory, timestamp+"_request.txt")
+
+		// Write the body to a file
+		err = ioutil.WriteFile(fileName, body, 0644)
+		if err != nil {
+			http.Error(w, "Error writing request to debug file", http.StatusInternalServerError)
+			return
+		}
+
+		// Call the original handler
+		handler.ServeHTTP(w, req)
+	})
 }
