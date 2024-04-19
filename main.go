@@ -20,8 +20,6 @@ import (
 
 func main() {
 	config := flag.String("config", "config.yaml", "The path for the config file")
-	debug := flag.Bool("debug", false, "if activated it will register requests body in the directory mentionned with debugDirectory flag")
-	debugDirectory := flag.String("debugDirectory", "/tmp/requests", "all the requests files will be registered in this directory, if debug flag is activated")
 	flag.Parse()
 
 	l := log.NewJsonLogger(&log.LoggerConfiguration{})
@@ -64,18 +62,22 @@ func main() {
 		r.AddRoute(path, c)
 	}
 
-	http.Handle("/", debugMiddleware(*debug, *debugDirectory, r))
+	http.Handle("/", debugMiddleware(l, cfg.GetBool("debug"), cfg.GetString("debugDirectory"), r))
 
 	port := cfg.GetString("port")
 	l.Info("server listening on %s", port)
 	l.Fatal(http.ListenAndServe(":"+port, nil).Error())
 }
-func debugMiddleware(debug bool, debugDirectory string, handler http.Handler) http.Handler {
+
+func debugMiddleware(logger log.Logger, debug bool, debugDirectory string, handler http.Handler) http.Handler {
 	if !debug {
+		logger.Debug("debug mode is disabled")
 		return handler
 	}
+	logger.Debug("debug mode is activated")
 	// Create a directory if it doesn't exist
 	if _, err := os.Stat(debugDirectory); os.IsNotExist(err) {
+		logger.Debug("creating directory %s for debug purpose", debugDirectory)
 		os.MkdirAll(debugDirectory, 0755) // Adjust the permissions as needed
 	}
 
@@ -100,6 +102,7 @@ func debugMiddleware(debug bool, debugDirectory string, handler http.Handler) ht
 			http.Error(w, "Error writing request to debug file", http.StatusInternalServerError)
 			return
 		}
+		logger.Debug("file %s has been created for debug purpose", fileName)
 
 		// Call the original handler
 		handler.ServeHTTP(w, req)
