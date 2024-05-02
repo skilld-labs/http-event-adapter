@@ -93,7 +93,7 @@ func debugMiddleware(logger log.Logger, debug bool, debugDirectory string, handl
 		req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 
 		// Generate a filename based on the current time to avoid overwrites
-		timestamp := time.Now().Format("20060102150405")
+		timestamp := time.Now().Format("20060102150405.999999")
 		fileName := filepath.Join(debugDirectory, timestamp+"_request.txt")
 
 		// Write the body to a file
